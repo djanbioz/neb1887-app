@@ -1,2 +1,0 @@
-const SUPABASE_URL  = 'https://qbrimzxabuyzgasfdsqs.supabase.co'
-const SUPABASE_KEY  = 'sb_publishable_qXa3ql8_ezkmo4ve0WhtNQ_spqKAZJo'
