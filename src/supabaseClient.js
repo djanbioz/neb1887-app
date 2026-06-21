@@ -7,7 +7,7 @@
 import { createClient } from '@supabase/supabase-js'
 
 const SUPABASE_URL  = 'https://qbrimzxabuyzgasfdsqs.supabase.co'
-const SUPABASE_KEY  = 'sb_publishable_qXa3ql8_ezkmo4ve0WhtNQ_spqKAZJo'
+   const SUPABASE_KEY  = 'sb_publishable_qXa3ql8_ezkmo4ve0WhtNQ_spqKAZJo'
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
 
@@ -29,6 +29,27 @@ export function onAuthChange(callback) {
   return supabase.auth.onAuthStateChange((_event, session) => {
     callback(session?.user ?? null)
   })
+}export async function loadUserRole(email) {
+  const { data, error } = await supabase
+    .from('user_roles')
+    .select('role')
+    .eq('email', email)
+    .maybeSingle()
+  if (error) throw error
+
+  const role = data?.role || 'admin'
+
+  if (role === 'parent') {
+    const { data: student, error: studentError } = await supabase
+      .from('students')
+      .select('*')
+      .eq('parent_email', email)
+      .maybeSingle()
+    if (studentError) throw studentError
+    return { role, student }
+  }
+
+  return { role, student: null }
 }
 
 
@@ -154,7 +175,26 @@ export async function cancelTransaction(id) {
 
 
 // ── EXPENSES ─────────────────────────────────────────────────
+export async function loadAttendance(period) {
+  let query = supabase.from('attendance').select('*')
+  if (period) query = query.eq('period', period)
+  const { data, error } = await query
+  if (error) throw error
+  return data
+}
 
+export async function setAttendance(studentId, period, daysPresent) {
+  const { data, error } = await supabase
+    .from('attendance')
+    .upsert(
+      { student_id: studentId, period, days_present: daysPresent, updated_at: new Date().toISOString() },
+      { onConflict: 'student_id,period' }
+    )
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
 export async function loadExpenses(period) {
   let query = supabase
     .from('expenses')
