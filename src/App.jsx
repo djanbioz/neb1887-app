@@ -8,7 +8,7 @@ import {
   supabase,
   signIn, signOut, onAuthChange,
   loadSettings, saveSettings,
-  loadStudents,
+  loadStudents, addStudent, updateStudent, deactivateStudent, reactivateStudent, permanentlyDeleteStudent,
   loadTransactions, addTransaction,
   loadExpenses, addExpense,
   loadMonthlySummary,
@@ -136,6 +136,7 @@ export default function App() {
       {screen==='students' && <ScreenStudents setScreen={setScreen} txns={txns} cfg={cfg} students={students} setPayState={setPayState}/>}
       {screen==='expenses' && <ScreenExpenses setScreen={setScreen} expenses={expenses} setExpenses={setExpenses} showToast={showToast}/>}
       {screen==='settings' && <ScreenSettings setScreen={setScreen} settings={settings} onSave={handleSaveSettings} onSignOut={async()=>{ await signOut(); setUser(null) }}/>}
+      {screen==='manage'   && <ScreenManageStudents setScreen={setScreen} students={students} setStudents={setStudents} showToast={showToast}/>}
       {screen==='receipt'  && <ScreenReceipt  setScreen={setScreen} payState={payState} cfg={cfg}/>}
 
       {screen !== 'receipt' && (
@@ -225,10 +226,11 @@ function LoginScreen({ onLogin, showToast }) {
 // SCREEN: HOME
 // ═══════════════════════════════════════════════════════════
 function ScreenHome({ setScreen, txns, cfg, students }) {
+  const activeStudents = students.filter(s => s.active !== false)
   const monthlyFee     = cfg.rate * cfg.days
   const periodTxns     = txns.filter(t => t.period === CURRENT_PERIOD && t.status === 'confirmed')
   const totalCollected = periodTxns.reduce((a,t) => a + Number(t.amount), 0)
-  const totalExpected  = students.length * monthlyFee
+  const totalExpected  = activeStudents.length * monthlyFee
   const paidStudents   = new Set(periodTxns.map(t => t.student_id)).size
   const gcashAmt       = txns.filter(t=>t.method==='GCash').reduce((a,t)=>a+Number(t.amount),0)
   const cashAmt        = txns.filter(t=>t.method==='Cash').reduce((a,t)=>a+Number(t.amount),0)
@@ -248,7 +250,7 @@ function ScreenHome({ setScreen, txns, cfg, students }) {
         <div style={{ background:'rgba(255,255,255,.15)', borderRadius:16, padding:'16px 20px', marginTop:20 }}>
           <div style={{ fontSize:11, opacity:.8, letterSpacing:1, textTransform:'uppercase' }}>{CURRENT_PERIOD} Collection</div>
           <div style={{ fontSize:34, fontWeight:900, marginTop:4 }}>{peso(totalCollected)}</div>
-          <div style={{ fontSize:12, opacity:.8, marginTop:2 }}>of {peso(totalExpected)} expected · {paidStudents}/{students.length} students paid</div>
+          <div style={{ fontSize:12, opacity:.8, marginTop:2 }}>of {peso(totalExpected)} expected · {paidStudents}/{activeStudents.length} students paid</div>
           <div style={{ background:'rgba(255,255,255,.25)', borderRadius:4, height:6, marginTop:12, overflow:'hidden' }}>
             <div style={{ background:C.amberLt, height:'100%', width:`${Math.min(100, totalExpected > 0 ? totalCollected/totalExpected*100 : 0).toFixed(0)}%`, borderRadius:4, transition:'width .6s' }}/>
           </div>
@@ -370,7 +372,7 @@ function ScreenPay({ setScreen, onSave, cfg, students, payState, setPayState }) 
       <Header title="Select Student" back={()=>setScreen('home')}/>
       <div style={{ padding:'12px 16px' }}>
         <div style={{ fontSize:13, color:C.muted, marginBottom:12 }}>Who is making a payment?</div>
-        {students.map(s => (
+        {students.filter(s => s.active !== false).map(s => (
           <button key={s.id} onClick={()=>{ setStudId(s.id); setAmount(String(monthlyFee)); setStep(2) }}
             style={{ display:'flex', justifyContent:'space-between', alignItems:'center', width:'100%', background:C.white, border:`1px solid ${C.border}`, borderRadius:12, padding:'12px 14px', marginBottom:8, cursor:'pointer', textAlign:'left' }}>
             <div>
@@ -632,14 +634,15 @@ function ScreenHistory({ setScreen, txns, students }) {
 function ScreenStudents({ setScreen, txns, cfg, students, setPayState }) {
   const [search, setSearch] = useState('')
   const monthlyFee = cfg.rate * cfg.days
+  const activeStudents = students.filter(s => s.active !== false)
 
-  const list = students.filter(s => s.name.toLowerCase().includes(search.toLowerCase()))
+  const list = activeStudents.filter(s => s.name.toLowerCase().includes(search.toLowerCase()))
 
   return (
     <div style={{ paddingBottom:80 }}>
       <div style={{ background:C.navy, padding:'14px 16px', display:'flex', alignItems:'center', gap:10 }}>
         <button onClick={()=>setScreen('home')} style={{ background:'none', border:'none', fontSize:20, cursor:'pointer', color:C.white, padding:0 }}>←</button>
-        <span style={{ fontSize:16, fontWeight:700, color:C.white }}>Students ({students.length})</span>
+        <span style={{ fontSize:16, fontWeight:700, color:C.white }}>Students ({activeStudents.length})</span>
       </div>
       <div style={{ padding:'12px 16px' }}>
         <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search student…" style={inp}/>
@@ -816,6 +819,17 @@ function ScreenSettings({ setScreen, settings, onSave, onSignOut }) {
         </div>
 
         <div style={{ background:C.white, borderRadius:14, border:`1px solid ${C.border}`, overflow:'hidden', marginBottom:16 }}>
+          <div style={{ padding:'12px 16px', background:C.cream, fontSize:12, fontWeight:700, color:C.muted, letterSpacing:1, textTransform:'uppercase' }}>Student Records</div>
+          <div style={{ padding:'14px 16px' }}>
+            <div style={{ fontSize:12, color:C.muted, marginBottom:10 }}>Add new students, edit names and contact details, or remove students who've left.</div>
+            <button onClick={()=>setScreen('manage')}
+              style={{ width:'100%', padding:'12px', background:C.navy, color:C.white, border:'none', borderRadius:10, fontSize:14, fontWeight:700, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
+              👥 Manage Students
+            </button>
+          </div>
+        </div>
+
+        <div style={{ background:C.white, borderRadius:14, border:`1px solid ${C.border}`, overflow:'hidden', marginBottom:16 }}>
           <div style={{ padding:'12px 16px', background:C.cream, fontSize:12, fontWeight:700, color:C.muted, letterSpacing:1, textTransform:'uppercase' }}>GCash Account</div>
           <div style={{ padding:'14px 16px' }}>
             <label style={lbl}>GCash Number</label>
@@ -834,6 +848,211 @@ function ScreenSettings({ setScreen, settings, onSave, onSignOut }) {
           Sign Out
         </button>
       </div>
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════
+// SCREEN: MANAGE STUDENTS (Add / Edit / Remove)
+// ═══════════════════════════════════════════════════════════
+function ScreenManageStudents({ setScreen, students, setStudents, showToast }) {
+  const [mode, setMode]       = useState('list')   // 'list' | 'add' | 'edit'
+  const [editing, setEditing] = useState(null)      // student being edited
+  const [showInactive, setShowInactive] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(null) // student pending hard-delete confirmation
+  const [saving, setSaving]   = useState(false)
+
+  const blank = { name:'', grade:7, guardian:'', contact:'', address:'' }
+  const [form, setForm] = useState(blank)
+
+  const startAdd = () => { setForm(blank); setMode('add') }
+  const startEdit = (s) => { setForm({ name:s.name, grade:s.grade, guardian:s.guardian||'', contact:s.contact||'', address:s.address||'' }); setEditing(s); setMode('edit') }
+  const cancel = () => { setMode('list'); setEditing(null); setForm(blank) }
+
+  const handleSaveNew = async () => {
+    if (!form.name.trim()) { showToast('Student name is required', 'error'); return }
+    setSaving(true)
+    try {
+      const created = await addStudent({ ...form, grade:Number(form.grade), active:true })
+      setStudents(prev => [...prev, created].sort((a,b)=>a.name.localeCompare(b.name)))
+      showToast(`${created.name} added!`)
+      cancel()
+    } catch (err) {
+      showToast(err.message, 'error')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleSaveEdit = async () => {
+    if (!form.name.trim()) { showToast('Student name is required', 'error'); return }
+    setSaving(true)
+    try {
+      await updateStudent(editing.id, { ...form, grade:Number(form.grade) })
+      setStudents(prev => prev.map(s => s.id===editing.id ? { ...s, ...form, grade:Number(form.grade) } : s).sort((a,b)=>a.name.localeCompare(b.name)))
+      showToast('Student updated!')
+      cancel()
+    } catch (err) {
+      showToast(err.message, 'error')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleDeactivate = async (s) => {
+    try {
+      await deactivateStudent(s.id)
+      setStudents(prev => prev.map(x => x.id===s.id ? { ...x, active:false } : x))
+      showToast(`${s.name} removed from active list`)
+    } catch (err) {
+      showToast(err.message, 'error')
+    }
+  }
+
+  const handleReactivate = async (s) => {
+    try {
+      await reactivateStudent(s.id)
+      setStudents(prev => prev.map(x => x.id===s.id ? { ...x, active:true } : x))
+      showToast(`${s.name} restored`)
+    } catch (err) {
+      showToast(err.message, 'error')
+    }
+  }
+
+  const handlePermanentDelete = async (s) => {
+    try {
+      await permanentlyDeleteStudent(s.id)
+      setStudents(prev => prev.filter(x => x.id !== s.id))
+      showToast(`${s.name} permanently deleted`)
+      setConfirmDelete(null)
+    } catch (err) {
+      showToast(err.message, 'error')
+    }
+  }
+
+  const visibleStudents = students.filter(s => showInactive ? true : s.active !== false)
+
+  const Header = ({ title, back }) => (
+    <div style={{ background:C.navy, padding:'14px 16px', display:'flex', alignItems:'center', gap:10, position:'sticky', top:0, zIndex:10 }}>
+      <button onClick={back} style={{ background:'none', border:'none', fontSize:20, cursor:'pointer', color:C.white, padding:0 }}>←</button>
+      <span style={{ fontSize:16, fontWeight:700, color:C.white, flex:1 }}>{title}</span>
+    </div>
+  )
+
+  // ── FORM (shared for Add and Edit) ──────────────────────────
+  if (mode === 'add' || mode === 'edit') return (
+    <div style={{ paddingBottom:40 }}>
+      <Header title={mode==='add' ? 'Add Student' : 'Edit Student'} back={cancel}/>
+      <div style={{ padding:16 }}>
+        <label style={lbl}>Full Name</label>
+        <input value={form.name} onChange={e=>setForm(p=>({...p,name:e.target.value}))} placeholder="e.g. Dela Cruz, Juan" style={inp}/>
+
+        <label style={lbl}>Grade Level</label>
+        <select value={form.grade} onChange={e=>setForm(p=>({...p,grade:e.target.value}))} style={inp}>
+          {[7,8,9,10,11,12].map(g => <option key={g} value={g}>Grade {g}</option>)}
+        </select>
+
+        <label style={lbl}>Guardian / Contact Person</label>
+        <input value={form.guardian} onChange={e=>setForm(p=>({...p,guardian:e.target.value}))} placeholder="e.g. Maria Dela Cruz" style={inp}/>
+
+        <label style={lbl}>Contact Number</label>
+        <input value={form.contact} onChange={e=>setForm(p=>({...p,contact:e.target.value}))} placeholder="e.g. 0917-123-4567" style={inp}/>
+
+        <label style={lbl}>Address</label>
+        <input value={form.address} onChange={e=>setForm(p=>({...p,address:e.target.value}))} placeholder="e.g. Purok 2, Roxas, Or. Mindoro" style={inp}/>
+
+        <button onClick={mode==='add' ? handleSaveNew : handleSaveEdit} disabled={saving}
+          style={{ width:'100%', padding:14, background:saving?C.muted:`linear-gradient(135deg,${C.gcash},${C.gcashDk})`, color:C.white, border:'none', borderRadius:12, fontSize:15, fontWeight:800, cursor:'pointer', marginTop:16 }}>
+          {saving ? 'Saving…' : mode==='add' ? '+ Add Student' : '💾 Save Changes'}
+        </button>
+
+        {mode === 'edit' && (
+          <button onClick={()=>{ handleDeactivate(editing); cancel() }}
+            style={{ width:'100%', padding:13, background:C.white, color:C.red, border:`1px solid ${C.red}44`, borderRadius:12, fontSize:14, fontWeight:700, cursor:'pointer', marginTop:10 }}>
+            🗑 Remove from Active List
+          </button>
+        )}
+      </div>
+    </div>
+  )
+
+  // ── LIST VIEW ─────────────────────────────────────────────────
+  return (
+    <div style={{ paddingBottom:90 }}>
+      <Header title={`Manage Students (${students.filter(s=>s.active!==false).length})`} back={()=>setScreen('settings')}/>
+
+      <div style={{ padding:'12px 16px 0' }}>
+        <button onClick={startAdd}
+          style={{ width:'100%', padding:13, background:`linear-gradient(135deg,${C.green},#157f3b)`, color:C.white, border:'none', borderRadius:12, fontSize:14, fontWeight:800, cursor:'pointer', marginBottom:12 }}>
+          + Add New Student
+        </button>
+
+        <label style={{ display:'flex', alignItems:'center', gap:8, fontSize:12, color:C.muted, marginBottom:10, cursor:'pointer' }}>
+          <input type="checkbox" checked={showInactive} onChange={e=>setShowInactive(e.target.checked)}/>
+          Show removed students too
+        </label>
+      </div>
+
+      <div style={{ padding:'0 16px' }}>
+        {visibleStudents.map(s => (
+          <div key={s.id} style={{ background:C.white, borderRadius:12, padding:'12px 14px', marginBottom:8, border:`1px solid ${C.border}`, opacity:s.active===false?0.55:1 }}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:8 }}>
+              <div>
+                <div style={{ fontSize:14, fontWeight:700, color:C.text }}>
+                  {s.name} {s.active===false && <span style={{ fontSize:10, color:C.red, fontWeight:700 }}>(REMOVED)</span>}
+                </div>
+                <div style={{ fontSize:11, color:C.muted }}>Grade {s.grade} · {s.guardian} · {s.contact}</div>
+                {s.address && <div style={{ fontSize:11, color:C.muted }}>📍 {s.address}</div>}
+              </div>
+              <span style={{ background:C.navy, color:C.amberLt, fontSize:10, fontWeight:700, padding:'2px 8px', borderRadius:10, flexShrink:0 }}>GR.{s.grade}</span>
+            </div>
+
+            <div style={{ display:'flex', gap:8 }}>
+              {s.active !== false ? (
+                <>
+                  <button onClick={()=>startEdit(s)}
+                    style={{ flex:1, padding:'8px', background:C.gcashLt, color:C.gcash, border:'none', borderRadius:8, fontSize:12, fontWeight:700, cursor:'pointer' }}>
+                    ✏️ Edit
+                  </button>
+                  <button onClick={()=>handleDeactivate(s)}
+                    style={{ flex:1, padding:'8px', background:C.redLt, color:C.red, border:'none', borderRadius:8, fontSize:12, fontWeight:700, cursor:'pointer' }}>
+                    🗑 Remove
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button onClick={()=>handleReactivate(s)}
+                    style={{ flex:1, padding:'8px', background:C.greenLt, color:C.green, border:'none', borderRadius:8, fontSize:12, fontWeight:700, cursor:'pointer' }}>
+                    ↩️ Restore
+                  </button>
+                  <button onClick={()=>setConfirmDelete(s)}
+                    style={{ flex:1, padding:'8px', background:C.redLt, color:C.red, border:'none', borderRadius:8, fontSize:12, fontWeight:700, cursor:'pointer' }}>
+                    ⚠️ Delete Forever
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        ))}
+        {visibleStudents.length === 0 && (
+          <div style={{ textAlign:'center', color:C.muted, padding:40, fontSize:14 }}>No students to show.</div>
+        )}
+      </div>
+
+      {/* CONFIRM PERMANENT DELETE MODAL */}
+      {confirmDelete && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.5)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:999, padding:24 }}>
+          <div style={{ background:C.white, borderRadius:16, padding:24, maxWidth:340, width:'100%' }}>
+            <div style={{ fontSize:32, textAlign:'center', marginBottom:8 }}>⚠️</div>
+            <div style={{ fontSize:16, fontWeight:800, color:C.text, textAlign:'center', marginBottom:8 }}>Delete {confirmDelete.name} permanently?</div>
+            <div style={{ fontSize:13, color:C.muted, textAlign:'center', marginBottom:20 }}>This also deletes their entire payment history. This cannot be undone. Consider "Remove" instead if you just want to hide them.</div>
+            <div style={{ display:'flex', gap:10 }}>
+              <button onClick={()=>setConfirmDelete(null)} style={{ flex:1, padding:12, background:C.cream, color:C.text, border:'none', borderRadius:10, fontSize:14, fontWeight:700, cursor:'pointer' }}>Cancel</button>
+              <button onClick={()=>handlePermanentDelete(confirmDelete)} style={{ flex:1, padding:12, background:C.red, color:C.white, border:'none', borderRadius:10, fontSize:14, fontWeight:700, cursor:'pointer' }}>Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

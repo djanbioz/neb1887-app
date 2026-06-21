@@ -56,10 +56,11 @@ export async function saveSettings(updates) {
 // ── STUDENTS ─────────────────────────────────────────────────
 
 export async function loadStudents() {
+  // Load ALL students (active + inactive). Screens that should only show
+  // active students filter client-side with `s.active !== false`.
   const { data, error } = await supabase
     .from('students')
     .select('*')
-    .eq('active', true)
     .order('name')
   if (error) throw error
   return data
@@ -84,9 +85,27 @@ export async function updateStudent(id, updates) {
 }
 
 export async function deactivateStudent(id) {
+  // Soft delete — keeps payment history intact but hides from active lists
   const { error } = await supabase
     .from('students')
     .update({ active: false })
+    .eq('id', id)
+  if (error) throw error
+}
+
+export async function reactivateStudent(id) {
+  const { error } = await supabase
+    .from('students')
+    .update({ active: true })
+    .eq('id', id)
+  if (error) throw error
+}
+
+export async function permanentlyDeleteStudent(id) {
+  // Hard delete — also removes their transaction history (cascade). Use with caution.
+  const { error } = await supabase
+    .from('students')
+    .delete()
     .eq('id', id)
   if (error) throw error
 }
